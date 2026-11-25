@@ -191,7 +191,7 @@ function queue(op) { const o = outbox(); o.push(op); LS.set('fin_outbox', o); }
 function applyOps(recs, ops) {
   for (const op of ops) {
     if (op.op === 'add' && !recs.some((r) => r.ID === op.rec.ID)) recs.push(op.rec);
-    if (op.op === 'del') recs = recs.filter((r) => r.ID !== op.id);
+    if (op.op === 'del') recs = recs.filter((r) => r.ID !== op.id && !(r.Registo === 'Pagamento' && r.Divida === op.id));
   }
   return recs;
 }
@@ -282,7 +282,7 @@ async function addRec(rec) {
 async function delRec(id) {
   try {
     if (!navigator.onLine) throw new TypeError('offline');
-    S.recs = await csvSave((recs) => recs.filter((r) => r.ID !== id));
+    S.recs = await csvSave((recs) => recs.filter((r) => r.ID !== id && !(r.Registo === 'Pagamento' && r.Divida === id)));
     LS.set('fin_recs', S.recs);
   } catch (e) {
     if (e instanceof TypeError) queue({ op: 'del', id }); else { toast(e.message); return; }
@@ -305,6 +305,10 @@ function adjusted() {
       if (r.Tipo === 'Investimento') { acc(r.Conta, -v); if (inMonth) d.inv += v; }
       if (r.Tipo === 'Transferência') { acc(r.Conta, -v); acc(r.Categoria, v); if (inMonth && r.Categoria === m.cfg.cpoup) d.poup += v; }
     }
+    if (r.Registo === 'Divida') {
+      if (r.Tipo === 'Eu devo') { acc(r.Conta, v); m.div.devo += v; }
+      if (r.Tipo === 'Devem-me') { acc(r.Conta, -v); m.div.devem += v; }
+    }
     if (r.Registo === 'Pagamento') {
       const dv = m.dividas.find((x) => x.id === r.Divida);
       if (dv) { dv.pago += v; dv.falta = Math.max(0, dv.falta - v); }
@@ -319,6 +323,12 @@ function adjusted() {
   const imp = new Set(S.model.imported);
   if (st.salRec && !imp.has(st.salRec.ID) && !st.recXl) { acc(m.cfg.csal, st.sal); m.trab.recebido = '✔ Sim'; }
   else if ((st.recXl || st.salRec) && Math.abs(salDelta) > 0.005) acc(m.cfg.csal, salDelta);
+  // dívidas criadas na app (vivem só no CSV; o Excel soma-as no Resumo)
+  const recsAll = allRecs();
+  for (const r of recsAll.filter((x) => x.Registo === 'Divida')) {
+    const pago = recsAll.filter((p) => p.Registo === 'Pagamento' && p.Divida === r.ID).reduce((a, p) => a + num(p.Valor), 0);
+    m.dividas.push({ id: r.ID, app: true, pessoa: String(r.Categoria || '').trim(), desc: r.Descricao || '', tipo: r.Tipo, valor: num(r.Valor), pago, falta: Math.max(0, num(r.Valor) - pago) });
+  }
   m.card.rec += d.rec; m.card.desp += d.desp; m.card.inv += d.inv;
   m.card.taxa = m.card.rec ? (m.card.rec - m.card.desp) / m.card.rec : null;
   m.card.saldo = m.contas.reduce((a, c) => a + c.saldo, 0);
@@ -429,6 +439,7 @@ function viewRegistos() {
     if (r.Registo === 'Movimento') { title = r.Descricao || r.Categoria; val = eur(num(r.Valor)); cls = r.Tipo === 'Receita' ? 'pos' : r.Tipo === 'Despesa' ? 'neg' : 'inv'; }
     if (r.Registo === 'Pagamento') { title = 'Pagamento · ' + (r.Descricao || r.Divida); val = eur(num(r.Valor)); }
     if (r.Registo === 'Dia') { title = 'Dia trabalhado'; }
+    if (r.Registo === 'Divida') { title = (r.Tipo === 'Eu devo' ? 'Devo a ' : 'Deve-me: ') + (r.Categoria || '') + (r.Descricao ? ' · ' + r.Descricao : ''); val = eur(num(r.Valor)); cls = r.Tipo === 'Eu devo' ? 'neg' : 'warn'; }
     if (r.Registo === 'Salario') { title = 'Salário recebido · ' + MESES[d.m - 1]; }
     const st = ob.has(r.ID) ? '<span class="warn">no telemóvel</span>' : imp.has(r.ID) ? '<span class="pos">no Excel ✓</span>' : '<span class="muted">por sincronizar</span>';
     return `<div class="row"><div style="min-width:0"><div style="font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(title)}</div>
@@ -502,7 +513,7 @@ function viewDividas() {
     const p = d.valor ? Math.min(1, d.pago / d.valor) : 0; const devo = d.tipo === 'Eu devo';
     return `<div style="padding:12px 0;border-bottom:1px solid var(--line2)">
       <div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline"><div style="min-width:0"><div style="font-weight:600">${esc(d.pessoa)}${d.desc ? ' · ' + esc(d.desc) : ''}</div>
-      <div class="sub">${esc(d.tipo)} · ${esc(d.id)}</div></div><b style="color:${devo ? 'var(--red-d)' : '#8A520F'}">${eur(d.falta)}</b></div>
+      <div class="sub">${esc(d.tipo)} · ${d.app ? 'criada na app' : esc(d.id)}</div></div><b style="color:${devo ? 'var(--red-d)' : '#8A520F'}">${eur(d.falta)}</b></div>
       <div class="prog" style="margin:8px 0 4px"><div style="width:${(p * 100).toFixed(0)}%;background:${devo ? '#C2554A' : '#E0A34A'}"></div></div>
       <div class="sub">Pago ${eur(d.pago)} de ${eur(d.valor)}</div></div>`;
   };
@@ -515,8 +526,9 @@ function viewDividas() {
       <b style="color:${p.saldo > 0 ? '#8A520F' : 'var(--red-d)'}">${p.saldo > 0 ? 'deve-te ' + eur(p.saldo) : 'deves ' + eur(-p.saldo)}</b></div>`).join('')}
       <p class="sub" style="margin:8px 0 0">Junta tudo o que deves e te devem a cada pessoa.</p></section>` : ''}
     <section class="card" style="padding:6px 16px"><h2 style="padding-top:10px">Dívidas em aberto</h2>${abertas.length ? abertas.map(item).join('') : '<p class="muted" style="font-size:14px">Sem dívidas em aberto.</p>'}</section>
-    ${abertas.length ? '<button class="btn" data-act="pagar">Registar pagamento</button>' : ''}
-    <p class="sub">Dívidas novas criam-se no Excel (folha Dívidas).</p></main>`;
+    <div style="display:grid;grid-template-columns:${abertas.length ? '1fr 1fr' : '1fr'};gap:10px">
+      <button class="btn ghost" data-act="novaDiv">Nova dívida</button>
+      ${abertas.length ? '<button class="btn" data-act="pagar">Registar pagamento</button>' : ''}</div></main>`;
 }
 
 /* ------------------------------------------------------------------ folhas (novo movimento, pagar, definições) */
@@ -563,6 +575,24 @@ function sheetPagar() {
       <label class="field">Conta<select data-f="pconta"><option value="">Nenhuma</option>${m.cfg.contas.map((c) => `<option ${c === F.pconta ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select></label>
     </div>
     <button class="btn" data-act="guardarPag">Guardar pagamento</button></section>`;
+}
+function sheetNovaDiv() {
+  const m = S.model;
+  const nomes = Array.from(new Set(adjusted().dividas.map((d) => d.pessoa).filter(Boolean))).sort();
+  return `<div class="sheet-bg" data-act="fechar"></div><section class="sheet" role="dialog" aria-modal="true" aria-label="Nova dívida">
+    <div class="grab"></div><div class="sheet-head"><h2 style="font-size:18px">Nova dívida</h2><button class="link-btn" data-act="fechar">Cancelar</button></div>
+    <div class="seg" style="grid-template-columns:repeat(2,minmax(0,1fr))" role="group" aria-label="Tipo">
+      <button class="${F.dtipo === 'Eu devo' ? 'on' : ''}" data-dtipo="Eu devo">Eu devo</button>
+      <button class="${F.dtipo === 'Devem-me' ? 'on' : ''}" data-dtipo="Devem-me">Devem-me</button></div>
+    <label class="field">Pessoa<input data-f="pessoa" list="pessoas" autocomplete="off" value="${esc(F.pessoa)}" placeholder="Nome"></label>
+    <datalist id="pessoas">${nomes.map((n) => `<option value="${esc(n)}">`).join('')}</datalist>
+    <label class="field">Descrição<input data-f="desc" autocomplete="off" value="${esc(F.desc)}" placeholder="Opcional (ex.: jantar)"></label>
+    <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px">
+      <label class="field">Valor<input inputmode="decimal" data-f="valor" value="${esc(F.valor)}" placeholder="0,00"></label>
+      <label class="field">Conta<select data-f="pconta"><option value="">Nenhuma</option>${m.cfg.contas.map((c) => `<option ${c === F.pconta ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select></label>
+    </div>
+    <p class="sub" style="margin:0">Escolhe uma conta só se o dinheiro ${F.dtipo === 'Eu devo' ? 'entrou nela (alguém te emprestou)' : 'saiu dela (emprestaste)'}. Se foi, por exemplo, alguém que pagou por ti, deixa “Nenhuma”.</p>
+    <button class="btn" data-act="guardarDiv">Guardar dívida</button></section>`;
 }
 function sheetSettings() {
   const c = cfg();
@@ -640,13 +670,14 @@ document.addEventListener('change', (e) => {
   if (t.dataset.div) { F.div = t.dataset.div; F.valor = ''; render(); }
 });
 document.addEventListener('click', async (e) => {
-  const el = e.target.closest('[data-act],[data-tab],[data-tipo],[data-cat],[data-day],[data-del],[data-pick],[data-open]');
+  const el = e.target.closest('[data-act],[data-tab],[data-tipo],[data-dtipo],[data-cat],[data-day],[data-del],[data-pick],[data-open]');
   if (!el) return;
   const d = el.dataset;
   if (d.tab) { S.tab = d.tab; S.sheet = null; render(); window.scrollTo(0, 0); return; }
   if (d.tipo) { F.tipo = d.tipo; render(); return; }
+  if (d.dtipo) { F.dtipo = d.dtipo; render(); return; }
   if (d.cat) { F.cat = d.cat; render(); return; }
-  if (d.del) { if (confirm('Apagar este registo?')) await delRec(d.del); return; }
+  if (d.del) { const rr = allRecs().find((x) => x.ID === d.del); const msg = rr && rr.Registo === 'Divida' ? 'Apagar esta dívida (e os pagamentos dela feitos na app)?' : 'Apagar este registo?'; if (confirm(msg)) await delRec(d.del); return; }
   if (d.pick) { await choose(d.pick); return; }
   if (d.open) { await openFolder(d.open, (browse && browse.path ? browse.path + '/' : '') + d.name); return; }
   if (d.day) { await toggleDay(+d.day); return; }
@@ -655,6 +686,8 @@ document.addEventListener('click', async (e) => {
     case 'novo': Object.assign(F, { tipo: 'Despesa', valor: '', cat: '', conta: S.model.cfg.contas[0] || '', data: todayIso(), desc: '' }); S.sheet = sheetNovo; render(); setTimeout(() => { const i = document.getElementById('valor'); if (i) i.focus(); }, 50); break;
     case 'pagar': Object.assign(F, { valor: '', div: '', pconta: S.model.cfg.contas[0] || '' }); S.sheet = sheetPagar; render(); break;
     case 'settings': S.sheet = sheetSettings; render(); break;
+    case 'novaDiv': Object.assign(F, { dtipo: 'Eu devo', pessoa: '', desc: '', valor: '', pconta: '' }); S.sheet = sheetNovaDiv; render(); break;
+    case 'guardarDiv': await saveDiv(el); break;
     case 'fechar': S.sheet = null; render(); break;
     case 'guardarMov': await saveMov(el); break;
     case 'guardarPag': await savePag(el); break;
@@ -687,8 +720,18 @@ async function saveMov(btn) {
     S.sheet = null; render();
   } catch (e) { btn.disabled = false; }
 }
+async function saveDiv(btn) {
+  const v = parseMoney(F.valor); const p = String(F.pessoa || '').trim();
+  if (!p) { toast('Escreve o nome da pessoa.'); return; }
+  if (!(v > 0)) { toast('Escreve um valor maior que zero.'); return; }
+  btn.disabled = true;
+  try {
+    await addRec({ Registo: 'Divida', Data: todayIso(), Categoria: p, Descricao: String(F.desc || '').trim(), Tipo: F.dtipo, Conta: F.pconta, Valor: v });
+    S.sheet = null; render();
+  } catch (e) { btn.disabled = false; }
+}
 async function savePag(btn) {
-  const v = parseMoney(F.valor); const dv = S.model.dividas.find((x) => x.id === F.div);
+  const v = parseMoney(F.valor); const dv = adjusted().dividas.find((x) => x.id === F.div);
   if (!dv) { toast('Escolhe a dívida.'); return; }
   if (!(v > 0)) { toast('Escreve um valor maior que zero.'); return; }
   btn.disabled = true;
