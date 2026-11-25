@@ -1,6 +1,6 @@
 // Service worker: guarda a "casca" da app para abrir depressa e sem rede.
 // Nunca guarda pedidos à Microsoft (login, OneDrive): esses vão sempre à rede.
-const CACHE = 'financas-v1';
+const CACHE = 'financas-v2';
 const SHELL = ['./', './index.html', './app.js', './xlsx-lite.js', './styles.css', './manifest.webmanifest',
   './icons/icon-192.png', './icons/icon-512.png', './icons/apple-touch-icon.png', './icons/favicon-32.png'];
 

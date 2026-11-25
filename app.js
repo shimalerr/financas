@@ -582,13 +582,37 @@ function viewLogin() {
     ${S.err ? `<div class="banner err">${ICON.warn}<span>${esc(S.err)}</span></div>` : ''}
     <button class="btn" data-act="login">Entrar com a conta Microsoft</button></main>`;
 }
-let pickResults = null;
+let pickResults = null; let pickErr = ''; let browse = null; // { id, path, items }
 function viewPick() {
+  const fileRow = (f) => `<div class="row"><div style="min-width:0"><div style="font-weight:600">${esc(f.name)}</div><div class="sub">${esc((f.parentReference && f.parentReference.path || '').replace(/^\/drive\/root:?/, '') || '/')}</div></div>
+      <button class="btn small" data-pick="${esc(f.id)}">Usar</button></div>`;
   $app().innerHTML = `<main class="page"><div class="top"><h1>Escolher o Excel</h1></div>
-    <section class="card"><label class="field">Procurar no OneDrive<input id="q" value="Financas" autocomplete="off"></label>
-      <div style="height:10px"></div><button class="btn" data-act="search">Procurar</button></section>
-    ${pickResults ? `<section class="card">${pickResults.length ? pickResults.map((f) => `<div class="row"><div style="min-width:0"><div style="font-weight:600">${esc(f.name)}</div><div class="sub">${esc((f.parentReference && f.parentReference.path || '').replace('/drive/root:', '') || '/')}</div></div>
-      <button class="btn small" data-pick="${esc(f.id)}">Usar</button></div>`).join('') : '<p class="muted">Nenhum .xlsx encontrado.</p>'}</section>` : ''}</main>`;
+    ${pickErr ? `<div class="banner err">${ICON.warn}<span>${esc(pickErr)}</span></div>` : ''}
+    <section class="card"><h2>Pelas pastas do OneDrive</h2>
+      ${browse ? `<div class="sub" style="margin-bottom:6px">📁 ${esc(browse.path || 'OneDrive')}</div>
+        ${browse.path ? '<div class="row"><button class="btn small ghost" data-act="browseUp">← Voltar</button><span></span></div>' : ''}
+        ${browse.items.map((f) => f.folder
+          ? `<div class="row"><span style="font-weight:600">📁 ${esc(f.name)}</span><button class="btn small ghost" data-open="${esc(f.id)}" data-name="${esc(f.name)}">Abrir</button></div>`
+          : fileRow(f)).join('') || '<p class="muted" style="font-size:14px">Pasta sem ficheiros .xlsx.</p>'}`
+        : '<button class="btn" data-act="browseRoot">Ver pastas</button>'}
+    </section>
+    <section class="card"><h2>Pelo caminho</h2>
+      <label class="field">Caminho dentro do OneDrive<input id="caminho" placeholder="FTP/Financas_Pessoais.xlsx" autocomplete="off"></label>
+      <div style="height:10px"></div><button class="btn ghost" data-act="byPath">Abrir</button></section>
+    <section class="card"><h2>Pesquisa</h2><label class="field">Nome<input id="q" value="Financas_Pessoais" autocomplete="off"></label>
+      <div style="height:10px"></div><button class="btn ghost" data-act="search">Procurar</button></section>
+    ${pickResults ? `<section class="card">${pickResults.length ? pickResults.map(fileRow).join('') : '<p class="muted">Nenhum .xlsx encontrado. Usa as pastas ou o caminho.</p>'}</section>` : ''}</main>`;
+}
+async function openFolder(id, path) {
+  pickErr = '';
+  const url = id ? `/me/drive/items/${id}/children?$top=200` : '/me/drive/root/children?$top=200';
+  const r = await graph(url);
+  if (!r.ok) { pickErr = 'Não consegui abrir a pasta (' + r.status + ').'; render(); return; }
+  const j = await r.json();
+  const items = (j.value || []).filter((f) => f.folder || (f.file && /\.xlsx$/i.test(f.name)))
+    .sort((a, b) => (b.folder ? 1 : 0) - (a.folder ? 1 : 0) || a.name.localeCompare(b.name));
+  browse = { id, path, items, parent: browse };
+  render();
 }
 
 /* ------------------------------------------------------------------ eventos */
@@ -600,7 +624,7 @@ document.addEventListener('change', (e) => {
   if (t.dataset.div) { F.div = t.dataset.div; F.valor = ''; render(); }
 });
 document.addEventListener('click', async (e) => {
-  const el = e.target.closest('[data-act],[data-tab],[data-tipo],[data-cat],[data-day],[data-del],[data-pick]');
+  const el = e.target.closest('[data-act],[data-tab],[data-tipo],[data-cat],[data-day],[data-del],[data-pick],[data-open]');
   if (!el) return;
   const d = el.dataset;
   if (d.tab) { S.tab = d.tab; S.sheet = null; render(); window.scrollTo(0, 0); return; }
@@ -608,6 +632,7 @@ document.addEventListener('click', async (e) => {
   if (d.cat) { F.cat = d.cat; render(); return; }
   if (d.del) { if (confirm('Apagar este registo?')) await delRec(d.del); return; }
   if (d.pick) { await choose(d.pick); return; }
+  if (d.open) { await openFolder(d.open, (browse && browse.path ? browse.path + '/' : '') + d.name); return; }
   if (d.day) { await toggleDay(+d.day); return; }
   switch (d.act) {
     case 'refresh': await refresh(); break;
@@ -622,6 +647,15 @@ document.addEventListener('click', async (e) => {
     case 'saveCid': { const v = document.getElementById('cid').value.trim(); if (!/^[0-9a-f-]{36}$/i.test(v)) { toast('Isso não parece um Client ID.'); return; } setCfg({ clientId: v }); render(); break; }
     case 'login': await login('select_account'); break;
     case 'search': await search(document.getElementById('q').value); break;
+    case 'browseRoot': await openFolder(null, ''); break;
+    case 'browseUp': { const p = browse && browse.parent; browse = p ? p.parent : null; if (p) await openFolder(p.id, p.path); else render(); break; }
+    case 'byPath': {
+      const p = document.getElementById('caminho').value.trim().replace(/\\/g, '/').replace(/^\/+/, '');
+      if (!p) return;
+      const r = await graph(`/me/drive/root:/${p.split('/').map(encodeURIComponent).join('/')}`);
+      if (!r.ok) { pickErr = 'Não encontrei esse caminho no OneDrive. Confirma o nome da pasta e do ficheiro.'; render(); return; }
+      const f = await r.json(); await choose(f.id); break;
+    }
     case 'trocarExcel': setCfg({ excelId: null }); S.model = null; S.sheet = null; pickResults = null; render(); break;
     case 'sair': ['fin_tok', 'fin_model', 'fin_recs', 'fin_outbox'].forEach(LS.del); setCfg({ excelId: null }); location.reload(); break;
   }
@@ -660,7 +694,9 @@ async function toggleRecebido() {
   if (st.salRec) await delRec(st.salRec.ID); else await addRec({ Registo: 'Salario', Data: iso(y, m, 1), Conta: S.model.cfg.csal, Valor: st.sal });
 }
 async function search(q) {
+  pickErr = '';
   const r = await graph(`/me/drive/root/search(q='${encodeURIComponent(String(q || 'xlsx').replace(/'/g, "''"))}')?$top=50`);
+  if (!r.ok) { pickErr = 'A pesquisa do OneDrive falhou (' + r.status + '). Usa as pastas ou o caminho.'; pickResults = null; render(); return; }
   const j = await r.json();
   pickResults = (j.value || []).filter((f) => f.file && /\.xlsx$/i.test(f.name));
   render();
