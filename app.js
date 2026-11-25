@@ -233,7 +233,8 @@ async function extract(book) {
   for (let r = 6; r <= 15; r++) if (v(K, 'I' + r)) m.cats.Investimento.push(v(K, 'I' + r));
   for (let r = MAP.divFirstRow; r <= MAP.divLastRow; r++) {
     const id = v(D, 'B' + r); if (!id) continue;
-    m.dividas.push({ id: String(id), pessoa: v(D, 'D' + r) || '', desc: v(D, 'E' + r) || '', tipo: v(D, 'F' + r) || '', valor: num(v(D, 'G' + r)), pago: num(v(D, 'I' + r)), falta: num(v(D, 'J' + r)) });
+    const dsc = v(D, 'E' + r); const descTxt = typeof dsc === 'number' && dsc > 20000 && dsc < 80000 ? serialToIso(dsc).split('-').reverse().join('/') : (dsc ?? '');
+    m.dividas.push({ id: String(id), pessoa: String(v(D, 'D' + r) || '').trim(), desc: String(descTxt), tipo: v(D, 'F' + r) || '', valor: num(v(D, 'G' + r)), pago: num(v(D, 'I' + r)), falta: num(v(D, 'J' + r)) });
   }
   for (let r = MAP.diasFirstRow; r <= MAP.diasLastRow; r++) {
     const mi = serialToIso(v(T, 'B' + r)); if (!mi) continue;
@@ -489,6 +490,14 @@ function viewDias() {
 function viewDividas() {
   const m = adjusted();
   const abertas = m.dividas.filter((d) => d.falta > 0.005);
+  const porPessoa = {};
+  for (const d of abertas) {
+    const k = String(d.pessoa || '').trim(); if (!k) continue;
+    const key = k.toLocaleLowerCase('pt-PT');
+    if (!porPessoa[key]) porPessoa[key] = { nome: k, saldo: 0 };
+    porPessoa[key].saldo += d.tipo === 'Devem-me' ? d.falta : d.tipo === 'Eu devo' ? -d.falta : 0;
+  }
+  const pessoas = Object.values(porPessoa).filter((p) => Math.abs(p.saldo) > 0.005).sort((a, b) => Math.abs(b.saldo) - Math.abs(a.saldo));
   const item = (d) => {
     const p = d.valor ? Math.min(1, d.pago / d.valor) : 0; const devo = d.tipo === 'Eu devo';
     return `<div style="padding:12px 0;border-bottom:1px solid var(--line2)">
@@ -502,7 +511,10 @@ function viewDividas() {
     <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px">
       <div style="background:var(--red-l);border-radius:16px;padding:14px"><div class="sub" style="color:var(--red-d)">Eu devo</div><div class="num" style="font-weight:700;font-size:24px;color:var(--red-d)">${eur(m.div.devo)}</div></div>
       <div style="background:var(--amber-l);border-radius:16px;padding:14px"><div class="sub" style="color:#8A520F">Devem-me</div><div class="num" style="font-weight:700;font-size:24px;color:#8A520F">${eur(m.div.devem)}</div></div></div>
-    <section class="card" style="padding:6px 16px">${abertas.length ? abertas.map(item).join('') : '<p class="muted" style="font-size:14px">Sem dívidas em aberto.</p>'}</section>
+    ${pessoas.length ? `<section class="card"><h2>Por pessoa</h2>${pessoas.map((p) => `<div class="row"><span style="font-weight:600">${esc(p.nome)}</span>
+      <b style="color:${p.saldo > 0 ? '#8A520F' : 'var(--red-d)'}">${p.saldo > 0 ? 'deve-te ' + eur(p.saldo) : 'deves ' + eur(-p.saldo)}</b></div>`).join('')}
+      <p class="sub" style="margin:8px 0 0">Junta tudo o que deves e te devem a cada pessoa.</p></section>` : ''}
+    <section class="card" style="padding:6px 16px"><h2 style="padding-top:10px">Dívidas em aberto</h2>${abertas.length ? abertas.map(item).join('') : '<p class="muted" style="font-size:14px">Sem dívidas em aberto.</p>'}</section>
     ${abertas.length ? '<button class="btn" data-act="pagar">Registar pagamento</button>' : ''}
     <p class="sub">Dívidas novas criam-se no Excel (folha Dívidas).</p></main>`;
 }
