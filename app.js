@@ -555,7 +555,7 @@ function sheetPagar() {
   const sel = abertas.find((d) => d.id === F.div);
   if (F.valor === '' && sel) F.valor = sel.falta.toFixed(2).replace('.', ',');
   return `<div class="sheet-bg" data-act="fechar"></div><section class="sheet" role="dialog" aria-modal="true" aria-label="Registar pagamento">
-    <div class="grab"></div><h2 style="font-size:18px">Registar pagamento</h2>
+    <div class="grab"></div><div class="sheet-head"><h2 style="font-size:18px">Registar pagamento</h2><button class="link-btn" data-act="fechar">Cancelar</button></div>
     ${abertas.map((d) => `<label class="radio ${d.id === F.div ? 'on' : ''}"><input type="radio" name="div" data-div="${esc(d.id)}" ${d.id === F.div ? 'checked' : ''}>
       <span style="flex-grow:1"><b>${esc(d.pessoa)}</b>${d.desc ? ' · ' + esc(d.desc) : ''}<br><span class="sub">${esc(d.tipo)}</span></span><b>${eur(d.falta)}</b></label>`).join('')}
     <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px">
@@ -567,7 +567,7 @@ function sheetPagar() {
 function sheetSettings() {
   const c = cfg();
   return `<div class="sheet-bg" data-act="fechar"></div><section class="sheet" role="dialog" aria-modal="true" aria-label="Definições">
-    <div class="grab"></div><h2 style="font-size:18px">Definições</h2>
+    <div class="grab"></div><div class="sheet-head"><h2 style="font-size:18px">Definições</h2><button class="link-btn" data-act="fechar">Fechar</button></div>
     <div class="form" style="border:1px solid var(--line)">
       <label><span>Excel</span><span class="sub" style="text-align:right">${esc(c.excelName || '')}</span></label>
       <label><span>Registos do iPhone</span><span class="sub" style="text-align:right">${CSV_NAME} (mesma pasta)</span></label>
@@ -628,6 +628,10 @@ async function openFolder(id, path) {
 }
 
 /* ------------------------------------------------------------------ eventos */
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && S.sheet) { S.sheet = null; render(); } });
+let touchY = null;
+document.addEventListener('touchstart', (e) => { const sh = e.target.closest('.sheet'); touchY = sh && sh.scrollTop <= 0 ? e.touches[0].clientY : null; }, { passive: true });
+document.addEventListener('touchend', (e) => { if (touchY != null && S.sheet && e.changedTouches[0].clientY - touchY > 90) { S.sheet = null; render(); } touchY = null; }, { passive: true });
 document.addEventListener('input', (e) => { const f = e.target.dataset && e.target.dataset.f; if (f) F[f] = e.target.value; });
 document.addEventListener('change', (e) => {
   const t = e.target;
