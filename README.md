@@ -2,9 +2,9 @@
 
 App pessoal (iPhone + PC) ligada ao Excel `Financas_Pessoais.xlsx` no OneDrive.
 
-- **iPhone:** Resumo, novo movimento, dias de trabalho, salário recebido e pagamentos de dívidas.
-- **PC:** só o Resumo (os dados continuam a ser inseridos no Excel).
-- A app **nunca altera o Excel**. Guarda o que registas no ficheiro `Financas_iPhone.csv`, na mesma pasta do OneDrive, e o Excel importa-o pela folha **Do iPhone**.
+- **iPhone e PC:** Resumo (com «O que me sobra» de qualquer mês), movimentos (com «Dividir com alguém»), despesas planeadas, dívidas como no Splitwise, dias de trabalho. Tudo se pode editar ou apagar no separador Registos.
+- A app **nunca altera o Excel**. Guarda tudo no ficheiro `Financas_iPhone.csv`, na mesma pasta do OneDrive, e o Excel importa-o pela folha **Dados**. Uma vez por dia, a app guarda também uma cópia em `Financas_iPhone_backup.csv`.
+- Do Excel, a app só lê a configuração: contas e saldos iniciais, categorias, fixos, dias marcados, ETFs e reserva do carro. Faz as contas sozinha, com as mesmas regras do Excel.
 
 São 4 partes, feitas uma única vez (cerca de 30 minutos no total).
 
@@ -31,13 +31,13 @@ in
 ```
 
 5. Clica em **Concluído**. No painel da direita, muda o nome da consulta para `DoiPhone`.
-6. Clica em **Fechar e Carregar Para…**, depois em **Tabela** › **Folha de cálculo existente**, e escreve `='Do iPhone'!$A$1` › OK.
+6. Clica em **Fechar e Carregar Para…**, depois em **Tabela** › **Folha de cálculo existente**, e escreve `=Dados!$A$1` › OK.
 7. Para atualizar sozinho: em **Dados › Consultas e Ligações**, clica com o botão direito em `DoiPhone` › **Propriedades** e ativa:
    - ☑ *Atualizar dados ao abrir o ficheiro*
    - ☑ *Atualizar a cada 5 minutos*
 8. Guarda.
 
-> Na folha **Do iPhone** não se escreve nada: tudo o que lá está vem do CSV.
+> Na folha **Dados** não se escreve nada: tudo o que lá está vem do CSV.
 > Na folha **Dias de Trabalho**, os dias e os salários marcados no iPhone aparecem a **azul**.
 
 ---
@@ -87,12 +87,13 @@ Não precisas de criar nenhum segredo nem palavra-passe da app.
 
 ## Como funciona no dia a dia
 
-- **Registar** no iPhone grava logo no `Financas_iPhone.csv`, no OneDrive. Sem rede, fica guardado no telemóvel e é enviado quando a rede voltar.
-- Na app, os valores **já incluem** o que registaste. A faixa azul diz quantos registos ainda não chegaram ao Excel.
-- Quando abres o Excel no PC, ele importa os registos (ou carregas em **Dados › Atualizar Tudo**) e guarda. A partir daí, a app mostra os valores do próprio Excel.
-- **Apagar** um registo no separador *Registos* também o tira do Excel na atualização seguinte.
-- **Dívidas novas, contas, metas e fixos** continuam a ser criados no Excel.
-- A app mostra o **mês que estiver escolhido no Resumo do Excel**. Deixa lá o mês atual.
+- **Registar** na app grava logo no `Financas_iPhone.csv`, no OneDrive. Sem rede, fica guardado no telemóvel e é enviado quando a rede voltar.
+- **Movimentos, planeadas e dívidas** só se registam na app. O Excel recebe-os na folha **Dados** (ao abrir, de 5 em 5 minutos ou em Dados › Atualizar Tudo).
+- **Contas, categorias, fixos, metas, ETFs e reserva do carro** continuam a mudar-se no Excel. Depois de guardares, a app lê-os sozinha (ou em ⚙ › Voltar a ler o Excel).
+- **Dividir uma despesa:** no +, liga «Dividir com alguém», escreve com quem, quem pagou e a tua parte. A tua parte conta como despesa; a outra parte fica como dívida.
+- **Dívidas:** podem ter prazo. Pagar uma parte baixa o que falta. O que falta conta no «O que me sobra» do mês do prazo.
+- **O que me sobra** = receitas do mês − fixos − variáveis − planeadas do mês (pagas e por pagar) − dívidas do mês − reserva do carro. Os ETFs ficam em «A pôr de parte».
+- Despesas pagas pela conta da reserva do carro (Conta Caixa) não descontam outra vez no que sobra, porque já saíram na reserva mensal.
 
 ## Problemas comuns
 
@@ -101,4 +102,5 @@ Não precisas de criar nenhum segredo nem palavra-passe da app.
 | Erro *redirect_uri* no login | O endereço registado na Parte 2 tem de ser **exatamente** igual ao da app, com a barra final. A app mostra o endereço certo no ecrã de configuração. |
 | No Excel, a consulta dá erro "ficheiro não encontrado" | Confirma o caminho do CSV no código do Power Query (Parte 1, passo 4). |
 | Valores com vírgulas estranhas no Excel | O código tem de manter o `"en-US"` no fim da linha `Tipos`. A app escreve os valores com ponto decimal de propósito. |
-| A app não mostra alterações recentes do Excel | O Excel tem de estar guardado (o salvamento automático do OneDrive faz isso). Na app, toca em ⟳. |
+| A app não mostra alterações recentes do Excel | O Excel tem de estar guardado (o salvamento automático do OneDrive faz isso). Na app, ⚙ › Voltar a ler o Excel. |
+| Depois de atualizar a app no GitHub, o iPhone mostra a versão antiga | Fecha a app (desliza para cima) e abre outra vez. |
